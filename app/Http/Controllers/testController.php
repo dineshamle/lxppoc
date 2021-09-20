@@ -155,10 +155,10 @@ class testController extends Controller
         }
 
         $response = null;
-        // $this->overviewDatamapper();
-        // $this->assessmentDatamapper();
+        $this->overviewDatamapper();
+        $this->assessmentDatamapper();
         $this->outcomesDatamapper();
-        // $this->courseMapDatamapper();
+        $this->courseMapDatamapper();
 
         }catch(Exception $e){
             echo $e->getMessage();
