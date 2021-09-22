@@ -2,6 +2,6 @@
 
 return [
 	'spreadsheet' => [
-		'sheet_titles' => ['overview', 'outcomes', 'assessments', 'course map']
+		'sheet_titles' => ['overview', 'outcomes', 'assessments', 'course map', 'course overview & toolbox']
 	],
 ];
