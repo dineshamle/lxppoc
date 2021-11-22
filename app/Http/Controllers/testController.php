@@ -56,10 +56,10 @@ class testController extends Controller
             $this->process($client, $stateData['sId']);
             $this->validations($stateData['cId']);
             //fetch tenant_code and user_email from course_id
-            $tenantCode = self::TENANT_CODE;
-            $userEmail = self::USER_EMAIL;
-
-            $this->createTaxonomyCaseJson($tenantCode, $userEmail);
+            // $tenantCode = self::TENANT_CODE;
+            // $userEmail = self::USER_EMAIL;
+            
+            // $this->createTaxonomyCaseJson($tenantCode, $userEmail);
         } else {
             //these params can be received from post 
             $url = "https://docs.google.com/spreadsheets/d/15YO3e8lsRPwqpqZZCG7Ykyr2byNu5pe72-HzZTpzUlY/edit#gid=153567492";
@@ -85,10 +85,10 @@ class testController extends Controller
             $this->validations($courseId);
 
             //fetch tenant_code and user_email from course_id
-            $tenantCode = self::TENANT_CODE;
-            $userEmail = self::USER_EMAIL;
+            // $tenantCode = self::TENANT_CODE;
+            // $userEmail = self::USER_EMAIL;
 
-            $this->createTaxonomyCaseJson($tenantCode, $userEmail);
+            // $this->createTaxonomyCaseJson($tenantCode, $userEmail);
         }
     }
 
@@ -194,10 +194,10 @@ class testController extends Controller
             }
 
             $response = null;
-            $this->overviewDatamapper();
+            // $this->overviewDatamapper();
             // $this->assessmentDatamapper();
-            $this->outcomesDatamapper();
-            // $this->courseMapDatamapper();
+            // $this->outcomesDatamapper();
+            $this->courseMapDatamapper();
             // $this->courseOverviewToolboxDatamapper();
 
         } catch (Exception $e) {

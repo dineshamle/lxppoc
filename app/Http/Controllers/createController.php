@@ -7,28 +7,27 @@ use Illuminate\Http\Request;
 ini_set("memory_limit", "1024M");
 class createController extends Controller
 {
-	public function create()
+	private function createSheet($service)
 	{
-		$client = $this->getClient();
-		$service = new \Google_Service_Sheets($client);
 
 		//create a new spreadsheet
 		$spreadsheet = new \Google_Service_Sheets_Spreadsheet([
 			'properties' => [
-				'title' => "LXP sheet - <Course Name> - ".date('Y-m-d') //add course name dynamically
+				'title' => "LXP sheet - <Course Name> - " . date('Y-m-d') //add course name dynamically
 			]
 		]);
 		$spreadsheet = $service->spreadsheets->create($spreadsheet);
 
-		echo  $spreadsheet->spreadsheetId;
+		return $spreadsheet->spreadsheetId;
+	}
 
-		//rename the default sheet (Sheet 1) to "Overview"
+	private function renameSheet($service, $spreadsheetId, $sheetId, $newName){
 		$requests = [
 			new \Google_Service_Sheets_Request([
 				'updateSheetProperties' => [
 					'properties' => [
-						'sheetId' => 0,
-						'title' => 'Overview',
+						'sheetId' => $sheetId,
+						'title' => $newName,
 					],
 					'fields' => 'title'
 				]
@@ -39,152 +38,337 @@ class createController extends Controller
 			'requests' => $requests
 		]);
 
-		$service->spreadsheets->batchUpdate($spreadsheet->spreadsheetId, $batchUpdateRequest);
+		$service->spreadsheets->batchUpdate($spreadsheetId, $batchUpdateRequest);
+	}
 
-		//Add "Assessments" sheet
+	private function addSheet($service, $spreadsheetId, $name){
 		$body = new \Google_Service_Sheets_BatchUpdateSpreadsheetRequest(array(
 			'requests' => array(
 				'addSheet' => array(
 					'properties' => array(
-						'title' => 'Assessments'
+						'title' => $name
 					)
 				)
 			)
 		));
-		$service->spreadsheets->batchUpdate($spreadsheet->spreadsheetId, $body);
+		$service->spreadsheets->batchUpdate($spreadsheetId, $body);
+	}
 
-		//Add "Outcomes" sheet
-		$body = new \Google_Service_Sheets_BatchUpdateSpreadsheetRequest(array(
-			'requests' => array(
-				'addSheet' => array(
-					'properties' => array(
-						'title' => 'Outcomes'
-					)
-				)
-			)
-		));
-		$service->spreadsheets->batchUpdate($spreadsheet->spreadsheetId, $body);
-
-		//Add "Course Map" sheet
-		$body = new \Google_Service_Sheets_BatchUpdateSpreadsheetRequest(array(
-			'requests' => array(
-				'addSheet' => array(
-					'properties' => array(
-						'title' => 'Course Map'
-					)
-				)
-			)
-		));
-		$service->spreadsheets->batchUpdate($spreadsheet->spreadsheetId, $body);
-
-		//get sheetIds
-		$response = $service->spreadsheets->get($spreadsheet->spreadsheetId);
-		$sheets = [];
-		foreach ($response->getSheets() as $s) {
-			$sheets[strtolower($s['properties']['title'])] = $s['properties']['sheetId'];
-		}
-		print_r($sheets);
-	
-		
-
-
-
-
-
-
-
-		$values = [
-			[
-				'Course Overview', ''
-			],
-			[
-				'Course Name', 1, 3
-			],
-			[
-				'Program', 2
-			],
-			[],
-			[
-				'Course Details', ''
-			],
-			[
-				'Course Drive Folder (external)', 7
-			]
-		];
-
+	private function addDataToSheet($service, $spreadsheetId, $sheetName, $values)
+	{
 		$body = new \Google_Service_Sheets_ValueRange([
 			'values' => $values
 		]);
 		$params = [
 			'valueInputOption' => 'RAW'
 		];
-		$result = $service->spreadsheets_values->update($spreadsheet->spreadsheetId, 'Overview',
-		$body, $params);
-		printf("%d cells updated.", $result->getUpdatedCells());
+		$service->spreadsheets_values->update(
+			$spreadsheetId,
+			$sheetName,
+			$body,
+			$params
+		);
+		// printf("%d cells updated.", $result->getUpdatedCells());
+	}
 
+	private function getRange($dataArr)
+	{
+		$range = new \Google_Service_Sheets_GridRange();
+		$range->setStartRowIndex($dataArr['index']['startRow']);
+		$range->setEndRowIndex($dataArr['index']['endRow']);
+		$range->setStartColumnIndex($dataArr['index']['startColumn']);
+		$range->setEndColumnIndex($dataArr['index']['endColumn']);
+		$range->setSheetId($dataArr['sheetId']);
+
+		return $range;
+	}
+
+	private function getColor($dataArr)
+	{
+		$color = new \Google_Service_Sheets_Color();
+		$color->setRed($dataArr['r']);
+		$color->setGreen($dataArr['g']);
+		$color->setBlue($dataArr['b']);
+
+		return $color;
+	}
+
+	private function mergeCells($mergeType, $range)
+	{
+		$request = new \Google_Service_Sheets_MergeCellsRequest();
+		$request->setMergeType($mergeType);
+		$request->setRange($range);
+
+		$body = new \Google_Service_Sheets_Request();
+		$body->setMergeCells($request);
+
+		return $body;
+	}
+
+	private function cellTextFormat($dataArr)
+	{
+		//set text format
+		$cellTextFormat = new \Google_Service_Sheets_TextFormat();
+		//set text color
+		$cellTextColor = $this->getColor($dataArr['color']);
+		$cellTextFormat->setForegroundColor($cellTextColor);
+		$cellTextFormat->setBold($dataArr['bold']);
+		return $cellTextFormat;
+	}
+
+	private function updateCellText($dataArr)
+	{
+		$cellFormat = new \Google_Service_Sheets_CellFormat();
+		$cellFormat->setTextFormat($dataArr['cellTextFormat']);
+		$cellData = new \Google_Service_Sheets_CellData();
+		$cellData->setUserEnteredFormat($cellFormat);
+		$rowData = new \Google_Service_Sheets_RowData();
+		$rowData->setValues([$cellData]);
+		$rows[] = $rowData;
+		$request = new \Google_Service_Sheets_UpdateCellsRequest();
+		$request->setRows($rows);
+		$request->setFields($dataArr['fields']);
+		$request->setRange($dataArr['range']);
+		$body = new \Google_Service_Sheets_Request();
+		$body->setUpdateCells($request);
+		return $body;
+	}
+
+	private function updateCell($dataArr)
+	{
+		$cellFormat = new \Google_Service_Sheets_CellFormat();
+		$cellFormat->setHorizontalAlignment($dataArr['horizontalAlign']);
+		//set background color
+		$cellBGColor = $this->getColor($dataArr['bgcolor']);
+		$cellFormat->setBackgroundColor($cellBGColor);
+
+		$cellData = new \Google_Service_Sheets_CellData();
+		$cellData->setUserEnteredFormat($cellFormat);
+		$rowData = new \Google_Service_Sheets_RowData();
+		$rowData->setValues([$cellData]);
+		$rows[] = $rowData;
+		$request = new \Google_Service_Sheets_UpdateCellsRequest();
+		$request->setRows($rows);
+		$request->setFields($dataArr['fields']);
+		$request->setRange($dataArr['range']);
+		$body = new \Google_Service_Sheets_Request();
+		$body->setUpdateCells($request);
+		return $body;
+	}
+
+	private function updateCellWidth($dataArr)
+	{
+		$dimensionRange = new \Google_Service_Sheets_DimensionRange();
+		$dimensionRange->setSheetId($dataArr['sheetId']);
+		$dimensionRange->setDimension($dataArr['dimension']);
+		$dimensionRange->setStartIndex($dataArr['startIndex']);
+		$dimensionRange->setEndIndex($dataArr['endIndex']);
+
+		$dimensionProperties = new \Google_Service_Sheets_DimensionProperties();
+		$dimensionProperties->setPixelSize($dataArr['width']);
+
+		$request = new \Google_Service_Sheets_UpdateDimensionPropertiesRequest();
+		$request->setProperties($dimensionProperties);
+		$request->setRange($dimensionRange);
+		$request->setFields('pixelSize');
+
+		$body = new \Google_Service_Sheets_Request();
+		$body->setUpdateDimensionProperties($request);
+		return $body;
+	}
+
+	public function create()
+	{
+		$client = $this->getClient();
+		$service = new \Google_Service_Sheets($client);
+
+		$spreadsheetId = $this->createSheet($service);
+
+		//rename the default sheet (Sheet 1) to "Overview"
+		$this->renameSheet($service, $spreadsheetId, 0, 'Overview');
+
+		//Add "Assessments" sheet
+		$this->addSheet($service, $spreadsheetId, 'Assessments');
+
+		//Add "Outcomes" sheet
+		$this->addSheet($service, $spreadsheetId, 'Outcomes');
 		
+		//Add "Course Map" sheet
+		$this->addSheet($service, $spreadsheetId, 'Course Map');
 
-		$rangel = new \Google_Service_Sheets_GridRange();
-$rangel->setStartRowIndex(0);
-$rangel->setEndRowIndex(1);
-$rangel->setStartColumnIndex(0);
-$rangel->setEndColumnIndex(2);
-$rangel->setHorizontalAlignment('CENTER');
-$rangel->setSheetId(0);
+		//get sheetIds
+		$response = $service->spreadsheets->get($spreadsheetId);
 
-$request = new \Google_Service_Sheets_MergeCellsRequest();
-$request->setMergeType('MERGE_ROWS'); // Modified
-$request->setRange($rangel); // Modified
-
-$body = new \Google_Service_Sheets_Request(); // Added
-$body->setMergeCells($request); // Added
-
-$batchUpdateRequest = new \Google_Service_Sheets_BatchUpdateSpreadsheetRequest();
-$batchUpdateRequest->setRequests($body); // Modified
-
-$response = $service->spreadsheets->batchUpdate($spreadsheet->spreadsheetId,$batchUpdateRequest);
+		//map sheet titles to sheet ids
+		$sheets = [];
+		foreach ($response->getSheets() as $s) {
+			$sheets[strtolower($s['properties']['title'])] = $s['properties']['sheetId'];
+		}
 
 
+		//add data to overview sheet
+		$values = [
+			[
+				'Course Overview'
+			],
+			[
+				'Course Name', 1
+			],
+			[
+				'Program', 2
+			],
+			[],
+			[
+				'Course Details'
+			],
+			[
+				'Course Drive Folder (external)', 7
+			]
+		];
+
+		//Add data to sheet
+		$this->addDataToSheet($service, $spreadsheetId, 'Overview', $values);
+
+		////modifying sheet styling
+		$updateArr = [];
+		//get 'Overview' sheet id
+		$overviewSheetId = $sheets['overview'];
+
+		//get range of first two cols of 1st row
+		$range = $this->getRange(
+			[
+				'index' => [
+					'startRow' => 0,
+					'endRow' => 1,
+					'startColumn' => 0,
+					'endColumn' => 2
+				],
+				'sheetId' => $overviewSheetId
+			]
+		);
+
+		//merge first two columns in row1
+		$updateArr[] = $this->mergeCells('MERGE_ROWS', $range);
+
+		//set text color and font weight
+		$cellTextFormat = $this->cellTextFormat([
+			'color' => [
+				'r' => 1,
+				'g' => 1,
+				'b' => 1
+			],
+			'bold' => true
+		]);
+
+		$updateArr[] = $this->updateCellText([
+			'cellTextFormat' => $cellTextFormat,
+			'fields' => 'userEnteredFormat.textFormat',
+			'range' => $range
+		]);
+
+		////set cell format: Change horizontalAlignment to "CENTER". set background color
+		$updateArr[] = $this->updateCell([
+			'bgcolor' => [
+				'r' => 0.21,
+				'g' => 0.118,
+				'b' => 0.212
+			],
+			'horizontalAlign' => 'CENTER',
+			'fields' => 'userEnteredFormat.horizontalAlignment,userEnteredFormat.backgroundColor',
+			'range' => $range
+		]);
+		
+		//set cell width
+		$updateArr[] = $this->updateCellWidth([
+			'sheetId' => $overviewSheetId,
+			'dimension' => 'COLUMNS',
+			'startIndex' => 0,
+			'endIndex'=> 1,
+			'width' => 350
+		]);
+
+		$updateArr[] = $this->updateCellWidth([
+			'sheetId' => $overviewSheetId,
+			'dimension' => 'COLUMNS',
+			'startIndex' => 1,
+			'endIndex'=> 2,
+			'width' => 700
+		]);
+	
+		//get range of first two cols of 1st row
+		$range = $this->getRange(
+			[
+				'index' => [
+					'startRow' => 4,
+					'endRow' => 5,
+					'startColumn' => 0,
+					'endColumn' => 2
+				],
+				'sheetId' => $overviewSheetId
+			]
+		);
+
+		//merge first two columns in row1
+		$updateArr[] = $this->mergeCells('MERGE_ROWS', $range);
+
+		//set text color and font weight
+		$cellTextFormat = $this->cellTextFormat([
+			'color' => [
+				'r' => 1,
+				'g' => 1,
+				'b' => 1
+			],
+			'bold' => true
+		]);
+
+		$updateArr[] = $this->updateCellText([
+			'cellTextFormat' => $cellTextFormat,
+			'fields' => 'userEnteredFormat.textFormat',
+			'range' => $range
+		]);
+
+		////set cell format: Change horizontalAlignment to "CENTER". set background color
+		$updateArr[] = $this->updateCell([
+			'bgcolor' => [
+				'r' => 0.21,
+				'g' => 0.118,
+				'b' => 0.212
+			],
+			'horizontalAlign' => 'CENTER',
+			'fields' => 'userEnteredFormat.horizontalAlignment,userEnteredFormat.backgroundColor',
+			'range' => $range
+		]);
+
+		$range1 = $this->getRange(
+			[
+				'index' => [
+					'startRow' => 1,
+					'endRow' => 4,
+					'startColumn' => 0,
+					'endColumn' => 1
+				],
+				'sheetId' => $overviewSheetId
+			]
+		);
+
+		$updateArr[] = $this->updateCell([
+			'bgcolor' => [
+				'r' => 0.212,
+				'g' => 0.213,
+				'b' => 0.18
+			],
+			'horizontalAlign' => 'LEFT',
+			'fields' => 'userEnteredFormat.horizontalAlignment,userEnteredFormat.backgroundColor',
+			'range' => $range1
+		]);
 
 
-$rangel = new \Google_Service_Sheets_GridRange();
-$rangel->setStartRowIndex(4);
-$rangel->setEndRowIndex(5);
-$rangel->setStartColumnIndex(0);
-$rangel->setEndColumnIndex(2);
-$rangel->setSheetId(0);
 
-$request = new \Google_Service_Sheets_MergeCellsRequest();
-$request->setMergeType('MERGE_ROWS'); // Modified
-$request->setRange($rangel); // Modified
+		//update spreadsheet
+		$batchUpdateRequest = new \Google_Service_Sheets_BatchUpdateSpreadsheetRequest();
+		$batchUpdateRequest->setRequests($updateArr); // Modified
 
-$body = new \Google_Service_Sheets_Request(); // Added
-$body->setMergeCells($request); // Added
-
-$batchUpdateRequest = new \Google_Service_Sheets_BatchUpdateSpreadsheetRequest();
-$batchUpdateRequest->setRequests($body); // Modified
-
-$response = $service->spreadsheets->batchUpdate($spreadsheet->spreadsheetId,$batchUpdateRequest);
-
-
-
-		// $requests = [
-		// 	new \Google_Service_Sheets_Request([
-		// 		'updateSheetProperties' => [
-		// 			'properties' => [
-		// 				'sheetId' => 0,
-		// 				'title' => 'Overview',
-		// 			],
-		// 			'fields' => 'title'
-		// 		]
-		// 	])
-		// ];
-
-		// $batchUpdateRequest = new \Google_Service_Sheets_BatchUpdateSpreadsheetRequest([
-		// 	'requests' => $requests
-		// ]);
-
-		// $service->spreadsheets->batchUpdate($spreadsheet->spreadsheetId, $batchUpdateRequest);
+		$response = $service->spreadsheets->batchUpdate($spreadsheetId, $batchUpdateRequest);
 	}
 
 	function getClient()

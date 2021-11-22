@@ -24,3 +24,10 @@ Route::get('/create', 'createController@create');
 Route::get('/parse', 'testController@parseUrl');
 
 Route::get('/casejson', 'createTaxonomyController@createTaxonomyCaseJson');
+Route::get('/auth', 'createTaxonomyController@checkAuth');
+Route::get('/publish', 'createTaxonomyController@publishTaxonomy');
+Route::get('/checkPublish', 'createTaxonomyController@checkPublishTaxonomy');
+Route::get('/copyToLor', 'createTaxonomyController@copyTaxonomyToLOR');
+
+
+Route::get('/createexcel', 'createExcelController@create');
